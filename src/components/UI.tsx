@@ -1,0 +1,411 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { Check, MapPin, AlertTriangle, Loader, LogIn, LogOut } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+
+// Types
+interface Coordinates {
+  latitude: number;
+  longitude: number;
+}
+
+interface GeofenceZone {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusInMeters: number;
+}
+
+interface AttendanceRecord {
+  id: string;
+  timestamp: Date;
+  action: 'check-in' | 'check-out';
+  locationName: string;
+}
+
+// Sample geofence zones - in a real app, these would come from an API or config
+const GEOFENCE_ZONES: GeofenceZone[] = [
+  {
+    id: '1',
+    name: 'Main Office',
+    latitude: 28.478669,
+    longitude: 77.502874,
+    radiusInMeters: 100,
+  },
+  {
+    id: '2',
+    name: 'Branch Office',
+    latitude: 37.7833,
+    longitude: -122.4167,
+    radiusInMeters: 75,
+  },
+];
+
+// Helper function to calculate distance between coordinates in meters
+const calculateDistance = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number => {
+  const R = 6371e3; // Earth's radius in meters
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+// Check if coordinates are within a geofence zone
+const isWithinGeofence = (
+  coords: Coordinates,
+  zone: GeofenceZone
+): boolean => {
+  const distance = calculateDistance(
+    coords.latitude,
+    coords.longitude,
+    zone.latitude,
+    zone.longitude
+  );
+  return distance <= zone.radiusInMeters;
+};
+
+const GeolocationAttendanceSystem: React.FC = () => {
+  const [currentLocation, setCurrentLocation] = useState<Coordinates | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [nearbyZones, setNearbyZones] = useState<GeofenceZone[]>([]);
+  const [activeZone, setActiveZone] = useState<GeofenceZone | null>(null);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [checkedIn, setCheckedIn] = useState<boolean>(false);
+  const [refreshCounter, setRefreshCounter] = useState<number>(0);
+
+  // Fetch current location
+  const fetchLocation = useCallback(() => {
+    setLoading(true);
+    setLocationError(null);
+
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation is not supported by your browser');
+      setLoading(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setCurrentLocation({ latitude, longitude });
+        setLoading(false);
+      },
+      (error) => {
+        let errorMessage = 'Failed to get location';
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage = 'Location access denied. Please enable location services.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = 'Location information is unavailable.';
+            break;
+          case error.TIMEOUT:
+            errorMessage = 'Location request timed out.';
+            break;
+        }
+        setLocationError(errorMessage);
+        setLoading(false);
+      },
+      { 
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    );
+  }, []);
+
+  // Check for nearby geofence zones when location updates
+  useEffect(() => {
+    if (!currentLocation) return;
+
+    const zones = GEOFENCE_ZONES.filter((zone) =>
+      isWithinGeofence(currentLocation, zone)
+    );
+    
+    setNearbyZones(zones);
+    
+    // Set active zone to the first nearby zone if available
+    if (zones.length > 0 && !activeZone) {
+      setActiveZone(zones[0]);
+    } else if (zones.length === 0) {
+      setActiveZone(null);
+    }
+  }, [currentLocation, activeZone]);
+
+  // Initial location fetch
+  useEffect(() => {
+    fetchLocation();
+  }, [fetchLocation, refreshCounter]);
+
+  // Handle check-in
+  const handleCheckIn = () => {
+    if (!activeZone) return;
+
+    const record: AttendanceRecord = {
+      id: Date.now().toString(),
+      timestamp: new Date(),
+      action: 'check-in',
+      locationName: activeZone.name,
+    };
+
+    setAttendanceRecords((prev) => [...prev, record]);
+    setCheckedIn(true);
+  };
+
+  // Handle check-out
+  const handleCheckOut = () => {
+    if (!activeZone) return;
+
+    const record: AttendanceRecord = {
+      id: Date.now().toString(),
+      timestamp: new Date(),
+      action: 'check-out',
+      locationName: activeZone.name,
+    };
+
+    setAttendanceRecords((prev) => [...prev, record]);
+    setCheckedIn(false);
+  };
+
+  // Format coordinates for display
+  const formatCoordinates = (coords: Coordinates): string => {
+    return `${coords.latitude.toFixed(6)}, ${coords.longitude.toFixed(6)}`;
+  };
+
+  // Refresh location data
+  const refreshLocation = () => {
+    setRefreshCounter(prev => prev + 1);
+  };
+
+  // Select a specific zone
+  const selectZone = (zone: GeofenceZone) => {
+    setActiveZone(zone);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-gray-100 p-4">
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="max-w-md mx-auto bg-gray-800 rounded-lg shadow-lg overflow-hidden"
+      >
+        <header className="bg-gray-700 p-4 flex items-center justify-between">
+          <h1 className="text-xl font-bold flex items-center">
+            <MapPin className="mr-2" size={24} />
+            Geo Attendance
+          </h1>
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={refreshLocation}
+            className="p-2 rounded-full bg-gray-600 hover:bg-gray-500 transition-colors"
+            disabled={loading}
+          >
+            <Loader className={`${loading ? 'animate-spin' : ''}`} size={20} />
+          </motion.button>
+        </header>
+
+        <div className="p-4">
+          <motion.div 
+            className="mb-6 rounded-lg bg-gray-700 p-4"
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.1 }}
+          >
+            <h2 className="text-lg font-semibold mb-2">Current Location</h2>
+            
+            <AnimatePresence mode="wait">
+              {locationError ? (
+                <motion.div 
+                  key="error"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="flex items-center text-red-400 mb-2"
+                >
+                  <AlertTriangle size={18} className="mr-2" />
+                  <p>{locationError}</p>
+                </motion.div>
+              ) : loading ? (
+                <motion.div 
+                  key="loading"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="flex items-center text-blue-400 mb-2"
+                >
+                  <Loader size={18} className="mr-2 animate-spin" />
+                  <p>Fetching location...</p>
+                </motion.div>
+              ) : currentLocation ? (
+                <motion.div 
+                  key="location"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  <div className="text-green-400 flex items-center mb-2">
+                    <Check size={18} className="mr-2" />
+                    <p>Location acquired</p>
+                  </div>
+                  <p className="text-gray-300 text-sm">
+                    Coordinates: {formatCoordinates(currentLocation)}
+                  </p>
+                </motion.div>
+              ) : (
+                <motion.div 
+                  key="no-location"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="text-yellow-400"
+                >
+                  <p>No location data</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+
+          <motion.div 
+            className="mb-6"
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.2 }}
+          >
+            <h2 className="text-lg font-semibold mb-2">Geofence Zones</h2>
+            
+            {nearbyZones.length > 0 ? (
+              <div className="space-y-2">
+                {nearbyZones.map((zone) => (
+                  <motion.div
+                    key={zone.id}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => selectZone(zone)}
+                    className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                      activeZone?.id === zone.id
+                        ? 'bg-blue-900 border border-blue-500'
+                        : 'bg-gray-700 hover:bg-gray-600'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium">{zone.name}</span>
+                      <span className="text-xs bg-blue-800 px-2 py-1 rounded-full">
+                        {zone.radiusInMeters}m
+                      </span>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            ) : currentLocation ? (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="bg-gray-700 p-3 rounded-lg text-yellow-400 flex items-center"
+              >
+                <AlertTriangle size={18} className="mr-2" />
+                <p>Not within any geofence zone</p>
+              </motion.div>
+            ) : null}
+          </motion.div>
+
+          <motion.div 
+            className="mb-6"
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.3 }}
+          >
+            <div className="flex gap-3">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleCheckIn}
+                disabled={!activeZone || checkedIn}
+                className={`flex-1 py-3 rounded-lg flex items-center justify-center font-medium ${
+                  !activeZone || checkedIn
+                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                    : 'bg-green-600 hover:bg-green-500 text-white'
+                }`}
+              >
+                <LogIn size={18} className="mr-2" />
+                Check In
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleCheckOut}
+                disabled={!activeZone || !checkedIn}
+                className={`flex-1 py-3 rounded-lg flex items-center justify-center font-medium ${
+                  !activeZone || !checkedIn
+                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                    : 'bg-red-600 hover:bg-red-500 text-white'
+                }`}
+              >
+                <LogOut size={18} className="mr-2" />
+                Check Out
+              </motion.button>
+            </div>
+          </motion.div>
+
+          {attendanceRecords.length > 0 && (
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.4 }}
+            >
+              <h2 className="text-lg font-semibold mb-2">Recent Activity</h2>
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                <AnimatePresence>
+                  {attendanceRecords
+                    .slice()
+                    .reverse()
+                    .map((record) => (
+                      <motion.div
+                        key={record.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        className={`p-3 rounded-lg ${
+                          record.action === 'check-in'
+                            ? 'bg-green-900/30 border-l-4 border-green-500'
+                            : 'bg-red-900/30 border-l-4 border-red-500'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium">
+                            {record.action === 'check-in' ? 'Checked In' : 'Checked Out'}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {record.timestamp.toLocaleTimeString()}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-300">{record.locationName}</p>
+                      </motion.div>
+                    ))}
+                </AnimatePresence>
+              </div>
+            </motion.div>
+          )}
+        </div>
+
+        <footer className="bg-gray-700 p-3 text-center text-sm text-gray-400">
+          <p>Status: {checkedIn ? 'Checked In' : 'Checked Out'}</p>
+        </footer>
+      </motion.div>
+    </div>
+  );
+};
+
+export default GeolocationAttendanceSystem;
