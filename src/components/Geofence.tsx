@@ -14,7 +14,7 @@ const Geofence: React.FC = () => {
     latitude: 28.590080, // example: New Delhi lat
     longitude: 77.230899, // example: New Delhi lng
   };
-  const geofenceRadius = 1000; // 100 meters
+  const geofenceRadius = 10000; // 100 meters
 
   // Haversine formula to calculate distance between two geo points
   const getDistance = (point1: Coordinates, point2: Coordinates): number => {

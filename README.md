@@ -1,6 +1,6 @@
 # 🦍 Georilla
 
-![Georilla Banner](./public/banner.png)
+![Georilla Banner](banner.png)
 
 **AI-Powered Geo-Location Based Attendance System**  
 Track, verify, and manage attendance seamlessly with location intelligence and automation.
