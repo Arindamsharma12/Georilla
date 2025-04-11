@@ -8,7 +8,7 @@ Promise.all([
   faceapi.nets.ssdMobilenetv1.loadFromUri('/models')
 ]).then(start)
 
-async function start() {
+export async function start() {
   const container = document.createElement('div')
   container.style.position = 'relative'
   document.body.append(container)
@@ -41,7 +41,7 @@ async function start() {
   })
 }
 
-function loadLabeledImages() {
+export function loadLabeledImages() {
   const labels = ['Pranay', 'Pushkar'] // Add more employee names as needed
   return Promise.all(
     labels.map(async label => {

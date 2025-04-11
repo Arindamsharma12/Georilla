@@ -28,16 +28,16 @@ const GEOFENCE_ZONES: GeofenceZone[] = [
   {
     id: '1',
     name: 'Main Office',
-    latitude: 28.478669,
-    longitude: 77.502874,
+    latitude: 28.470046,
+    longitude: 77.493496,
     radiusInMeters: 100,
   },
   {
     id: '2',
     name: 'Branch Office',
-    latitude: 37.7833,
-    longitude: -122.4167,
-    radiusInMeters: 75,
+    latitude: 28.6236477,
+    longitude: 77.3073903,
+    radiusInMeters: 100,
   },
 ];
 
