@@ -1,6 +1,6 @@
 import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/clerk-react";
 
-export default function App() {
+export default function Login() {
   return (
     <header>
       <SignedOut>

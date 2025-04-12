@@ -1,8 +1,8 @@
 import React from 'react';
 import FaceRecognition from './components/FaceRecognition.tsx';
 import { Routes,Route } from 'react-router-dom';
-import Geofence from './components/Geofence.tsx';
 import GeolocationAttendanceSystem from './components/UI.tsx';
+import Login from './components/Login.tsx';
 
 
 const App: React.FC = () => {
@@ -13,6 +13,7 @@ const App: React.FC = () => {
       <FaceRecognition />
     </div>}/>
       <Route path='/' element={<GeolocationAttendanceSystem/>}/>
+      <Route path='/login' element={<Login/>}/>
     </Routes>
   );
 };
