@@ -9,6 +9,7 @@ import {
   SignUp,
   useUser,
 } from "@clerk/clerk-react";
+import AdminDashboard from "./components/AdminDashboard";
 
 // Helper component to protect routes
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
@@ -75,7 +76,10 @@ const App: React.FC = () => {
           </ProtectedRoute>
         }
       />
-
+      <Route
+        path="/admin"
+        element={<AdminDashboard />}
+      />
       {/* Optional: Handle cases where a signed-in user lands on /login */}
       {/* <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/sign-up" element={<Navigate to="/" replace />} /> */}
