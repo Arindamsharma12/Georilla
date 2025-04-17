@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Check,
   MapPin,
@@ -57,7 +57,7 @@ const GEOFENCE_ZONES: GeofenceZone[] = [
     name: "SRM Office",
     latitude:  28.796565,
     longitude:  77.538373,
-    radiusInMeters: 50000,
+    radiusInMeters: 5,
   },
 ];
 
@@ -112,6 +112,8 @@ const GeolocationAttendanceSystem: React.FC = () => {
   const [faceVerified, setFaceVerified] = useState(false);
   const [recognizedName, setRecognizedName] = useState<string | null>(null);
   const [proceedToFace, setProceedToFace] = useState(false);
+  const [earlyCheckouts, setEarlyCheckouts] = useState<number>(0);
+  const lastZoneRef = useRef<GeofenceZone | null>(null);
 
   // Fetch current location
   const fetchLocation = useCallback(() => {
@@ -177,6 +179,43 @@ const GeolocationAttendanceSystem: React.FC = () => {
   useEffect(() => {
     fetchLocation();
   }, [fetchLocation, refreshCounter]);
+
+  // Auto-checkout when user leaves geofence or at 8pm
+  useEffect(() => {
+    if (!checkedIn || !activeZone) return;
+    // Listen for geofence exit
+    if (lastZoneRef.current && lastZoneRef.current.id !== activeZone.id) {
+      handleAutoCheckout();
+    }
+    lastZoneRef.current = activeZone;
+    // Listen for 8pm auto-checkout
+    const now = new Date();
+    const eightPM = new Date(now);
+    eightPM.setHours(20, 0, 0, 0);
+    const msTo8pm = eightPM.getTime() - now.getTime();
+    let timer: NodeJS.Timeout | null = null;
+    if (msTo8pm > 0) {
+      timer = setTimeout(() => {
+        if (checkedIn) handleAutoCheckout(true);
+      }, msTo8pm);
+    }
+    return () => { if (timer) clearTimeout(timer); };
+  }, [checkedIn, activeZone]);
+
+  const handleAutoCheckout = (is8pm = false) => {
+    if (!activeZone) return;
+    const now = new Date();
+    const isEarly = now.getHours() < 20;
+    if (isEarly && !is8pm) setEarlyCheckouts((prev) => prev + 1);
+    const record: AttendanceRecord = {
+      id: Date.now().toString(),
+      timestamp: now,
+      action: 'check-out',
+      locationName: activeZone.name + (is8pm ? ' (Auto 8pm)' : isEarly ? ' (Early)' : ''),
+    };
+    setAttendanceRecords((prev) => [...prev, record]);
+    setCheckedIn(false);
+  };
 
   // Handle check-in
   const handleCheckIn = () => {
@@ -246,37 +285,60 @@ const GeolocationAttendanceSystem: React.FC = () => {
     }
   };
 
-  // Dashboard UI
-  const Dashboard = () => (
-    <div className="bg-gray-800 rounded-lg shadow-lg p-6 max-w-2xl mx-auto mt-10">
-      <h2 className="text-2xl font-bold mb-6 text-center text-yellow-400 flex items-center justify-center gap-2">
-        <MapPin className="inline-block" /> Attendance Dashboard
-      </h2>
-      {attendanceRecords.length === 0 ? (
-        <p className="text-gray-400 text-center">No attendance records yet.</p>
-      ) : (
-        <ul className="divide-y divide-gray-700">
-          {attendanceRecords.map((record) => (
-            <li key={record.id} className="py-4 flex items-center justify-between">
+  // Enhanced Dashboard UI
+  const Dashboard = () => {
+    const totalCheckIns = attendanceRecords.filter(r => r.action === 'check-in').length;
+    const totalCheckOuts = attendanceRecords.filter(r => r.action === 'check-out').length;
+    const lastCheckIn = attendanceRecords.filter(r => r.action === 'check-in').slice(-1)[0];
+    const lastCheckOut = attendanceRecords.filter(r => r.action === 'check-out').slice(-1)[0];
+    return (
+      <div className="bg-gray-800 rounded-lg shadow-lg p-6 max-w-2xl mx-auto mt-10">
+        <h2 className="text-2xl font-bold mb-6 text-center text-yellow-400 flex items-center justify-center gap-2">
+          <MapPin className="inline-block" /> User Dashboard
+        </h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <div className="bg-gray-900 rounded-lg p-4 text-center">
+            <div className="text-xs text-gray-400">Total Check-ins</div>
+            <div className="text-2xl font-bold text-green-400">{totalCheckIns}</div>
+          </div>
+          <div className="bg-gray-900 rounded-lg p-4 text-center">
+            <div className="text-xs text-gray-400">Total Check-outs</div>
+            <div className="text-2xl font-bold text-blue-400">{totalCheckOuts}</div>
+          </div>
+          <div className="bg-gray-900 rounded-lg p-4 text-center">
+            <div className="text-xs text-gray-400">Early Check-outs</div>
+            <div className="text-2xl font-bold text-yellow-400">{earlyCheckouts}</div>
+          </div>
+          <div className="bg-gray-900 rounded-lg p-4 text-center">
+            <div className="text-xs text-gray-400">Last Check-in</div>
+            <div className="text-lg font-semibold text-gray-200">{lastCheckIn ? lastCheckIn.timestamp.toLocaleString() : '-'}</div>
+          </div>
+          <div className="bg-gray-900 rounded-lg p-4 text-center col-span-2 md:col-span-4">
+            <div className="text-xs text-gray-400">Last Check-out</div>
+            <div className="text-lg font-semibold text-gray-200">{lastCheckOut ? lastCheckOut.timestamp.toLocaleString() : '-'}</div>
+          </div>
+        </div>
+        <h3 className="text-lg font-bold mb-2 text-yellow-300">Attendance History</h3>
+        <ul className="divide-y divide-gray-700 max-h-64 overflow-y-auto">
+          {attendanceRecords.slice().reverse().map((record) => (
+            <li key={record.id} className="py-3 flex items-center justify-between">
               <div>
-                <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mr-2 ${record.action === 'check-in' ? 'bg-green-700 text-green-200' : 'bg-red-700 text-red-200'}`}>{record.action.toUpperCase()}</span>
+                <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mr-2 ${record.action === 'check-in' ? 'bg-green-700 text-green-200' : 'bg-blue-700 text-blue-200'}`}>{record.action.toUpperCase()}</span>
                 <span className="text-gray-200 font-medium">{record.locationName}</span>
               </div>
-              <div className="text-gray-400 text-sm">
-                {record.timestamp.toLocaleString()}
-              </div>
+              <div className="text-gray-400 text-sm">{record.timestamp.toLocaleString()}</div>
             </li>
           ))}
         </ul>
-      )}
-      <button
-        className="mt-6 w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2 px-4 rounded transition"
-        onClick={() => setShowDashboard(false)}
-      >
-        Back to Attendance
-      </button>
-    </div>
-  );
+        <button
+          className="mt-6 w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2 px-4 rounded transition"
+          onClick={() => setShowDashboard(false)}
+        >
+          Back to Attendance
+        </button>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 p-4">
