@@ -5,20 +5,50 @@ import "react-toastify/dist/ReactToastify.css"; // Keep toastify CSS
 
 interface FaceRecognitionProps {
   onVerified?: (name: string) => void;
+  useCamera?: boolean;
 }
 
-const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onVerified }) => {
+const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onVerified, useCamera }) => {
   const [isModelsLoaded, setModelsLoaded] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-
-  // Refs (remain the same)
+  const [cameraActive, setCameraActive] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const imageUploadRef = useRef<HTMLInputElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null); // Ref for the image/canvas container
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // useEffect for model loading (remains the same)
+  useEffect(() => {
+    if (useCamera && cameraActive && videoRef.current) {
+      navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+        }
+      });
+    } else if (videoRef.current && videoRef.current.srcObject) {
+      // Stop the camera if not using
+      (videoRef.current.srcObject as MediaStream)
+        .getTracks()
+        .forEach((track) => track.stop());
+      videoRef.current.srcObject = null;
+    }
+    return () => {
+      if (videoRef.current && videoRef.current.srcObject) {
+        (videoRef.current.srcObject as MediaStream)
+          .getTracks()
+          .forEach((track) => track.stop());
+        videoRef.current.srcObject = null;
+      }
+    };
+  }, [useCamera, cameraActive]);
+
+  useEffect(() => {
+    setVideoReady(false); // Reset video ready state when camera is toggled
+  }, [cameraActive]);
+
   useEffect(() => {
     const loadModels = async () => {
       const MODEL_URL = "/models";
@@ -42,7 +72,6 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onVerified }) => {
     loadModels();
   }, []);
 
-  // loadLabeledImages function (remains the same)
   const loadLabeledImages = async (): Promise<
     faceapi.LabeledFaceDescriptors[]
   > => {
@@ -90,7 +119,6 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onVerified }) => {
     );
   };
 
-  // handleImageChange function (logic remains the same, only canvas styling part changes slightly)
   const handleImageChange = async (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -277,7 +305,6 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onVerified }) => {
     }
   };
 
-  // handleUploadClick function (remains the same)
   const handleUploadClick = () => {
     if (!isModelsLoaded) {
       toast.warn("Models are still loading, please wait.");
@@ -290,11 +317,97 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onVerified }) => {
     imageUploadRef.current?.click();
   };
 
-  // --- Render with Tailwind Classes ---
+  // Camera capture handler
+  const handleCapture = async () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      toast.error("Camera not ready. Please wait a moment and try again.");
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg');
+      setImageUrl(dataUrl);
+      await processImageElement(canvas);
+    }
+  };
+
+  // Helper to process an image/canvas element for face recognition
+  const processImageElement = async (imgElement: HTMLImageElement | HTMLCanvasElement) => {
+    if (!isModelsLoaded) {
+      toast.error("Models are not loaded yet. Please wait.");
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      const labeledFaceDescriptors = await loadLabeledImages();
+      if (labeledFaceDescriptors.every((ld) => ld.descriptors.length === 0)) {
+        toast.error("No known face descriptors loaded. Cannot perform recognition.");
+        setIsProcessing(false);
+        return;
+      }
+      const faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.6);
+      const detections = await faceapi
+        .detectAllFaces(imgElement, new faceapi.SsdMobilenetv1Options())
+        .withFaceLandmarks()
+        .withFaceDescriptors();
+      if (!detections.length) {
+        toast.info("No faces detected in the captured image.");
+        setIsProcessing(false);
+        return;
+      }
+      const results = detections.map((d) => faceMatcher.findBestMatch(d.descriptor));
+      let recognizedName: string | null = null;
+      results.forEach((result) => {
+        if (result.label !== "unknown") {
+          recognizedName = result.label;
+        }
+      });
+      if (recognizedName && onVerified) {
+        onVerified(recognizedName);
+      }
+      // Draw results (optional, similar to file upload)
+      if (containerRef.current) {
+        if (canvasRef.current) {
+          containerRef.current.removeChild(canvasRef.current);
+        }
+        canvasRef.current = faceapi.createCanvasFromMedia(imgElement);
+        containerRef.current.appendChild(canvasRef.current);
+        const displaySize = {
+          width: imgElement.width,
+          height: imgElement.height,
+        };
+        faceapi.matchDimensions(canvasRef.current, displaySize);
+        const resizedDetections = faceapi.resizeResults(detections, displaySize);
+        results.forEach((result, i) => {
+          const box = resizedDetections[i].detection.box;
+          const drawBox = new faceapi.draw.DrawBox(box, {
+            label: result.toString(),
+            boxColor: result.label === "unknown" ? "red" : "aqua",
+            drawLabelOptions: {
+              fontColor: "white",
+              fontSize: 14,
+              padding: 2,
+              backgroundColor: result.label === "unknown" ? "red" : "blue",
+            },
+          });
+          drawBox.draw(canvasRef.current as HTMLCanvasElement);
+        });
+      }
+    } catch (error) {
+      toast.error("An error occurred during face recognition.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
-    // Main container
     <div className="flex flex-col items-center p-5 my-5 mx-auto max-w-2xl border border-gray-300 rounded-lg bg-gray-50 shadow-md">
-      {/* Toast Container */}
       <ToastContainer
         position="top-right"
         autoClose={5000}
@@ -307,43 +420,58 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onVerified }) => {
         pauseOnHover
         theme="colored"
       />
-
-      {/* Title */}
       <h2 className="text-2xl font-semibold text-gray-800 mb-6">
         Face Recognition
       </h2>
-
-      {/* Upload Section */}
-      <div className="flex flex-col items-center mb-6">
-        {/* Hidden file input */}
-        <input
-          type="file"
-          ref={imageUploadRef}
-          onChange={handleImageChange}
-          accept="image/jpeg, image/png, image/webp"
-          className="hidden" // Tailwind class to hide
-          disabled={isProcessing || !isModelsLoaded}
-        />
-        {/* Styled Upload Button */}
-        <button
-          className="py-2 px-5 mb-3 text-base text-white font-medium bg-blue-600 rounded-md cursor-pointer transition-colors duration-200 ease-in-out hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-          onClick={handleUploadClick}
-          disabled={isProcessing || !isModelsLoaded}
-        >
-          {isProcessing ? "Processing..." : "Upload Image"}
-        </button>
-        {/* Loading Models Text */}
-        {!isModelsLoaded && (
-          <p className="text-sm text-gray-600 animate-pulse">
-            Loading models...
-          </p>
-        )}
-      </div>
-
-      {/* Image Display Area */}
+      {useCamera ? (
+        <div className="flex flex-col items-center mb-6 w-full">
+          <video
+            ref={videoRef}
+            className="rounded-lg border mb-4 w-full max-w-md"
+            autoPlay
+            playsInline
+            onCanPlay={() => setVideoReady(true)}
+          />
+          <button
+            className="py-2 px-5 text-base text-white font-medium bg-blue-600 rounded-md cursor-pointer transition-colors duration-200 ease-in-out hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            onClick={handleCapture}
+            disabled={isProcessing || !isModelsLoaded || !videoReady}
+          >
+            {isProcessing ? "Processing..." : "Capture & Verify"}
+          </button>
+          <button
+            className="mt-2 py-1 px-3 text-sm text-gray-700 bg-gray-200 rounded hover:bg-gray-300"
+            onClick={() => setCameraActive((prev) => !prev)}
+          >
+            {cameraActive ? "Stop Camera" : "Start Camera"}
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center mb-6">
+          <input
+            type="file"
+            ref={imageUploadRef}
+            onChange={handleImageChange}
+            accept="image/jpeg, image/png, image/webp"
+            className="hidden"
+            disabled={isProcessing || !isModelsLoaded}
+          />
+          <button
+            className="py-2 px-5 mb-3 text-base text-white font-medium bg-blue-600 rounded-md cursor-pointer transition-colors duration-200 ease-in-out hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            onClick={handleUploadClick}
+            disabled={isProcessing || !isModelsLoaded}
+          >
+            {isProcessing ? "Processing..." : "Upload Image"}
+          </button>
+          {!isModelsLoaded && (
+            <p className="text-sm text-gray-600 animate-pulse">
+              Loading models...
+            </p>
+          )}
+        </div>
+      )}
       <div
         ref={containerRef}
-        // Container styles: relative positioning, size constraints, centering (for potential placeholders), border, background
         className="relative w-full max-w-full min-h-[150px] max-h-[65vh] overflow-hidden mt-3 border border-gray-200 bg-white flex justify-center items-center shadow-inner"
       >
         {imageUrl ? (
@@ -351,16 +479,11 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onVerified }) => {
             ref={imageRef}
             src={imageUrl}
             alt="Uploaded for face recognition"
-            // Image styles: block display, size constraints matching container, object-fit
             className="block max-w-full max-h-[65vh] h-auto object-contain"
           />
         ) : (
-          <span className="text-gray-400">Image will appear here</span> // Placeholder text
+          <span className="text-gray-400">Image will appear here</span>
         )}
-        {/* Canvas is appended dynamically here by faceapi/code.
-             Inline styles set position: absolute, top: 0, left: 0.
-             Tailwind classes could be added for max-width/height if needed:
-             canvasRef.current.classList.add('max-w-full', 'max-h-full'); */}
       </div>
     </div>
   );

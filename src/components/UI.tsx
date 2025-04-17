@@ -55,9 +55,9 @@ const GEOFENCE_ZONES: GeofenceZone[] = [
   {
     id: "3",
     name: "SRM Office",
-    latitude: 28.796566,
-    longitude: 77.538351,
-    radiusInMeters: 100,
+    latitude:  28.796565,
+    longitude:  77.538373,
+    radiusInMeters: 50000,
   },
 ];
 
@@ -111,6 +111,7 @@ const GeolocationAttendanceSystem: React.FC = () => {
   const [showDashboard, setShowDashboard] = useState(false);
   const [faceVerified, setFaceVerified] = useState(false);
   const [recognizedName, setRecognizedName] = useState<string | null>(null);
+  const [proceedToFace, setProceedToFace] = useState(false);
 
   // Fetch current location
   const fetchLocation = useCallback(() => {
@@ -284,8 +285,8 @@ const GeolocationAttendanceSystem: React.FC = () => {
       ) : (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <div className="flex justify-between items-center mb-6">
-            <img src="/logo.png" alt="Georilla Logo" className="h-20 w-100 mr-2 inline-block align-middle" />
-             <button
+            <img src="/logo.png" alt="Georilla Logo" className="h-15 w-70 mr-2 inline-block align-middle" />
+            <button
               className="bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2 px-4 rounded transition"
               onClick={() => setShowDashboard(true)}
             >
@@ -297,14 +298,7 @@ const GeolocationAttendanceSystem: React.FC = () => {
             animate={{ opacity: 1 }}
             className="max-w-md mx-auto bg-gray-800 rounded-lg shadow-lg overflow-hidden"
           >
-            {/* Only show FaceRecognition if user is within a geofence and not yet face verified */}
-            {activeZone && !faceVerified && (
-              <div className="p-4">
-                <h2 className="text-lg font-semibold mb-2 text-center">Face Verification Required</h2>
-                <FaceRecognition onVerified={handleFaceVerified} />
-              </div>
-            )}
-            {/* Show geofence UI only if not face verified */}
+            {/* Show geofence UI if not in office */}
             {!activeZone && (
               <div className="p-4">
                 <motion.div
@@ -492,6 +486,24 @@ const GeolocationAttendanceSystem: React.FC = () => {
                     </div>
                   </motion.div>
                 )}
+              </div>
+            )}
+            {/* If in office, show office info and proceed button, then face recognition */}
+            {activeZone && !proceedToFace && !faceVerified && (
+              <div className="p-4 text-center">
+                <h2 className="text-lg font-semibold mb-2 text-green-400">You are within: {activeZone.name}</h2>
+                <button
+                  className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition"
+                  onClick={() => setProceedToFace(true)}
+                >
+                  Proceed to Face Recognition
+                </button>
+              </div>
+            )}
+            {activeZone && proceedToFace && !faceVerified && (
+              <div className="p-4">
+                <h2 className="text-lg font-semibold mb-2 text-center">Face Verification Required</h2>
+                <FaceRecognition onVerified={handleFaceVerified} useCamera={true} />
               </div>
             )}
             {/* Show rest of the UI only if face is verified */}
