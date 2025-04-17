@@ -12,6 +12,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useClerk, useUser } from "@clerk/clerk-react";
 import { useNavigate } from "react-router-dom";
+import FaceRecognition from './FaceRecognition';
 
 // Types
 interface Coordinates {
@@ -48,6 +49,14 @@ const GEOFENCE_ZONES: GeofenceZone[] = [
     name: "Branch Office",
     latitude: 28.6236477,
     longitude: 77.3073903,
+    radiusInMeters: 100,
+  },
+  
+  {
+    id: "3",
+    name: "SRM Office",
+    latitude: 28.796566,
+    longitude: 77.538351,
     radiusInMeters: 100,
   },
 ];
@@ -99,6 +108,9 @@ const GeolocationAttendanceSystem: React.FC = () => {
   >([]);
   const [checkedIn, setCheckedIn] = useState<boolean>(false);
   const [refreshCounter, setRefreshCounter] = useState<number>(0);
+  const [showDashboard, setShowDashboard] = useState(false);
+  const [faceVerified, setFaceVerified] = useState(false);
+  const [recognizedName, setRecognizedName] = useState<string | null>(null);
 
   // Fetch current location
   const fetchLocation = useCallback(() => {
@@ -215,242 +227,285 @@ const GeolocationAttendanceSystem: React.FC = () => {
     navigate("/face-api");
   };
 
+  // Handler for successful face verification
+  const handleFaceVerified = (name: string) => {
+    setFaceVerified(true);
+    setRecognizedName(name);
+    // Automatically check in with recognized name
+    if (activeZone) {
+      const record: AttendanceRecord = {
+        id: Date.now().toString(),
+        timestamp: new Date(),
+        action: "check-in",
+        locationName: `${activeZone.name} (${name})`,
+      };
+      setAttendanceRecords((prev) => [...prev, record]);
+      setCheckedIn(true);
+      setShowDashboard(true);
+    }
+  };
+
+  // Dashboard UI
+  const Dashboard = () => (
+    <div className="bg-gray-800 rounded-lg shadow-lg p-6 max-w-2xl mx-auto mt-10">
+      <h2 className="text-2xl font-bold mb-6 text-center text-yellow-400 flex items-center justify-center gap-2">
+        <MapPin className="inline-block" /> Attendance Dashboard
+      </h2>
+      {attendanceRecords.length === 0 ? (
+        <p className="text-gray-400 text-center">No attendance records yet.</p>
+      ) : (
+        <ul className="divide-y divide-gray-700">
+          {attendanceRecords.map((record) => (
+            <li key={record.id} className="py-4 flex items-center justify-between">
+              <div>
+                <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mr-2 ${record.action === 'check-in' ? 'bg-green-700 text-green-200' : 'bg-red-700 text-red-200'}`}>{record.action.toUpperCase()}</span>
+                <span className="text-gray-200 font-medium">{record.locationName}</span>
+              </div>
+              <div className="text-gray-400 text-sm">
+                {record.timestamp.toLocaleString()}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <button
+        className="mt-6 w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2 px-4 rounded transition"
+        onClick={() => setShowDashboard(false)}
+      >
+        Back to Attendance
+      </button>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 p-4">
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="max-w-md mx-auto bg-gray-800 rounded-lg shadow-lg overflow-hidden"
-      >
-        <header className="bg-gray-700 p-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold flex items-center">
-            <MapPin className="mr-2" size={24} />
-            Geo Attendance
-          </h1>
-          <div className="flex items-center gap-2">
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={handleFaceVerify}
-              className="p-2 rounded-full bg-gray-600 hover:bg-gray-500 transition-colors"
-              title="Face Verification"
+      {showDashboard ? (
+        <Dashboard />
+      ) : (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <div className="flex justify-between items-center mb-6">
+            <img src="/logo.png" alt="Georilla Logo" className="h-20 w-100 mr-2 inline-block align-middle" />
+             <button
+              className="bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2 px-4 rounded transition"
+              onClick={() => setShowDashboard(true)}
             >
-              <Camera size={20} />
-            </motion.button>
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={refreshLocation}
-              className="p-2 rounded-full bg-gray-600 hover:bg-gray-500 transition-colors"
-              disabled={loading}
-              title="Refresh Location"
-            >
-              <Loader
-                className={`${loading ? "animate-spin" : ""}`}
-                size={20}
-              />
-            </motion.button>
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={() => signOut()}
-              className="p-2 rounded-full bg-gray-600 hover:bg-gray-500 transition-colors"
-              title="Logout"
-            >
-              <User size={20} />
-            </motion.button>
+              View Dashboard
+            </button>
           </div>
-        </header>
-
-        <div className="p-4">
           <motion.div
-            className="mb-6 rounded-lg bg-gray-700 p-4"
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.1 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="max-w-md mx-auto bg-gray-800 rounded-lg shadow-lg overflow-hidden"
           >
-            <h2 className="text-lg font-semibold mb-2">Current Location</h2>
-
-            <AnimatePresence mode="wait">
-              {locationError ? (
-                <motion.div
-                  key="error"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="flex items-center text-red-400 mb-2"
-                >
-                  <AlertTriangle size={18} className="mr-2" />
-                  <p>{locationError}</p>
-                </motion.div>
-              ) : loading ? (
-                <motion.div
-                  key="loading"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="flex items-center text-blue-400 mb-2"
-                >
-                  <Loader size={18} className="mr-2 animate-spin" />
-                  <p>Fetching location...</p>
-                </motion.div>
-              ) : currentLocation ? (
-                <motion.div
-                  key="location"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                >
-                  <div className="text-green-400 flex items-center mb-2">
-                    <Check size={18} className="mr-2" />
-                    <p>Location acquired</p>
-                  </div>
-                  <p className="text-gray-300 text-sm">
-                    Coordinates: {formatCoordinates(currentLocation)}
-                  </p>
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="no-location"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="text-yellow-400"
-                >
-                  <p>No location data</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-
-          <motion.div
-            className="mb-6"
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.2 }}
-          >
-            <h2 className="text-lg font-semibold mb-2">Geofence Zones</h2>
-
-            {nearbyZones.length > 0 ? (
-              <div className="space-y-2">
-                {nearbyZones.map((zone) => (
-                  <motion.div
-                    key={zone.id}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => selectZone(zone)}
-                    className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                      activeZone?.id === zone.id
-                        ? "bg-blue-900 border border-blue-500"
-                        : "bg-gray-700 hover:bg-gray-600"
-                    }`}
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="font-medium">{zone.name}</span>
-                      <span className="text-xs bg-blue-800 px-2 py-1 rounded-full">
-                        {zone.radiusInMeters}m
-                      </span>
-                    </div>
-                  </motion.div>
-                ))}
+            {/* Only show FaceRecognition if user is within a geofence and not yet face verified */}
+            {activeZone && !faceVerified && (
+              <div className="p-4">
+                <h2 className="text-lg font-semibold mb-2 text-center">Face Verification Required</h2>
+                <FaceRecognition onVerified={handleFaceVerified} />
               </div>
-            ) : currentLocation ? (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="bg-gray-700 p-3 rounded-lg text-yellow-400 flex items-center"
-              >
-                <AlertTriangle size={18} className="mr-2" />
-                <p>Not within any geofence zone</p>
-              </motion.div>
-            ) : null}
-          </motion.div>
+            )}
+            {/* Show geofence UI only if not face verified */}
+            {!activeZone && (
+              <div className="p-4">
+                <motion.div
+                  className="mb-6 rounded-lg bg-gray-700 p-4"
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.1 }}
+                >
+                  <h2 className="text-lg font-semibold mb-2">Current Location</h2>
 
-          <motion.div
-            className="mb-6"
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.3 }}
-          >
-            <div className="flex gap-3">
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleCheckIn}
-                disabled={!activeZone || checkedIn}
-                className={`flex-1 py-3 rounded-lg flex items-center justify-center font-medium ${
-                  !activeZone || checkedIn
-                    ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                    : "bg-green-600 hover:bg-green-500 text-white"
-                }`}
-              >
-                <LogIn size={18} className="mr-2" />
-                Check In
-              </motion.button>
-
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleCheckOut}
-                disabled={!activeZone || !checkedIn}
-                className={`flex-1 py-3 rounded-lg flex items-center justify-center font-medium ${
-                  !activeZone || !checkedIn
-                    ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                    : "bg-red-600 hover:bg-red-500 text-white"
-                }`}
-              >
-                <LogOut size={18} className="mr-2" />
-                Check Out
-              </motion.button>
-            </div>
-          </motion.div>
-
-          {attendanceRecords.length > 0 && (
-            <motion.div
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.4 }}
-            >
-              <h2 className="text-lg font-semibold mb-2">Recent Activity</h2>
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                <AnimatePresence>
-                  {attendanceRecords
-                    .slice()
-                    .reverse()
-                    .map((record) => (
+                  <AnimatePresence mode="wait">
+                    {locationError ? (
                       <motion.div
-                        key={record.id}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 20 }}
-                        className={`p-3 rounded-lg ${
-                          record.action === "check-in"
-                            ? "bg-green-900/30 border-l-4 border-green-500"
-                            : "bg-red-900/30 border-l-4 border-red-500"
-                        }`}
+                        key="error"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="flex items-center text-red-400 mb-2"
                       >
-                        <div className="flex justify-between items-center">
-                          <span className="font-medium">
-                            {record.action === "check-in"
-                              ? "Checked In"
-                              : "Checked Out"}
-                          </span>
-                          <span className="text-xs text-gray-400">
-                            {record.timestamp.toLocaleTimeString()}
-                          </span>
+                        <AlertTriangle size={18} className="mr-2" />
+                        <p>{locationError}</p>
+                      </motion.div>
+                    ) : loading ? (
+                      <motion.div
+                        key="loading"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="flex items-center text-blue-400 mb-2"
+                      >
+                        <Loader size={18} className="mr-2 animate-spin" />
+                        <p>Fetching location...</p>
+                      </motion.div>
+                    ) : currentLocation ? (
+                      <motion.div
+                        key="location"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                      >
+                        <div className="text-green-400 flex items-center mb-2">
+                          <Check size={18} className="mr-2" />
+                          <p>Location acquired</p>
                         </div>
-                        <p className="text-sm text-gray-300">
-                          {record.locationName}
+                        <p className="text-gray-300 text-sm">
+                          Coordinates: {formatCoordinates(currentLocation)}
                         </p>
                       </motion.div>
-                    ))}
-                </AnimatePresence>
-              </div>
-            </motion.div>
-          )}
-        </div>
+                    ) : (
+                      <motion.div
+                        key="no-location"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="text-yellow-400"
+                      >
+                        <p>No location data</p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
 
-        <footer className="bg-gray-700 p-3 text-center text-sm text-gray-400">
-          <p>Status: {checkedIn ? "Checked In" : "Checked Out"}</p>
-        </footer>
-      </motion.div>
+                <motion.div
+                  className="mb-6"
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                >
+                  <h2 className="text-lg font-semibold mb-2">Geofence Zones</h2>
+
+                  {nearbyZones.length > 0 ? (
+                    <div className="space-y-2">
+                      {nearbyZones.map((zone) => (
+                        <motion.div
+                          key={zone.id}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => selectZone(zone)}
+                          className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                            activeZone?.id === zone.id
+                              ? "bg-blue-900 border border-blue-500"
+                              : "bg-gray-700 hover:bg-gray-600"
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="font-medium">{zone.name}</span>
+                            <span className="text-xs bg-gray-800 px-2 py-1 rounded-full">
+                              {zone.radiusInMeters}m
+                            </span>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  ) : currentLocation ? (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="bg-gray-700 p-3 rounded-lg text-yellow-400 flex items-center"
+                    >
+                      <AlertTriangle size={18} className="mr-2" />
+                      <p>Not within any geofence zone</p>
+                    </motion.div>
+                  ) : null}
+                </motion.div>
+
+                <motion.div
+                  className="mb-6"
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.3 }}
+                >
+                  <div className="flex gap-3">
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={handleCheckIn}
+                      disabled={!activeZone || checkedIn}
+                      className={`flex-1 py-3 rounded-lg flex items-center justify-center font-medium ${
+                        !activeZone || checkedIn
+                          ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+                          : "bg-green-600 hover:bg-green-500 text-white"
+                      }`}
+                    >
+                      <LogIn size={18} className="mr-2" />
+                      Check In
+                    </motion.button>
+
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={handleCheckOut}
+                      disabled={!activeZone || !checkedIn}
+                      className={`flex-1 py-3 rounded-lg flex items-center justify-center font-medium ${
+                        !activeZone || !checkedIn
+                          ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+                          : "bg-red-600 hover:bg-red-500 text-white"
+                      }`}
+                    >
+                      <LogOut size={18} className="mr-2" />
+                      Check Out
+                    </motion.button>
+                  </div>
+                </motion.div>
+
+                {attendanceRecords.length > 0 && (
+                  <motion.div
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.4 }}
+                  >
+                    <h2 className="text-lg font-semibold mb-2">Recent Activity</h2>
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      <AnimatePresence>
+                        {attendanceRecords
+                          .slice()
+                          .reverse()
+                          .map((record) => (
+                            <motion.div
+                              key={record.id}
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: 20 }}
+                              className={`p-3 rounded-lg ${
+                                record.action === "check-in"
+                                  ? "bg-green-900/30 border-l-4 border-green-500"
+                                  : "bg-red-900/30 border-l-4 border-red-500"
+                              }`}
+                            >
+                              <div className="flex justify-between items-center">
+                                <span className="font-medium">
+                                  {record.action === "check-in"
+                                    ? "Checked In"
+                                    : "Checked Out"}
+                                </span>
+                                <span className="text-xs text-gray-400">
+                                  {record.timestamp.toLocaleTimeString()}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-300">
+                                {record.locationName}
+                              </p>
+                            </motion.div>
+                          ))}
+                      </AnimatePresence>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+            )}
+            {/* Show rest of the UI only if face is verified */}
+            {activeZone && faceVerified && (
+              <div className="p-4">
+                <h2 className="text-lg font-semibold mb-2 text-green-400 text-center">Face Verified: {recognizedName}</h2>
+              </div>
+            )}
+            <footer className="bg-gray-700 p-3 text-center text-sm text-gray-400">
+              <p>Status: {checkedIn ? "Checked In" : "Checked Out"}</p>
+            </footer>
+          </motion.div>
+        </motion.div>
+      )}
     </div>
   );
 };

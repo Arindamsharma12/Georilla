@@ -3,7 +3,11 @@ import * as faceapi from "face-api.js";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css"; // Keep toastify CSS
 
-const FaceRecognition: React.FC = () => {
+interface FaceRecognitionProps {
+  onVerified?: (name: string) => void;
+}
+
+const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onVerified }) => {
   const [isModelsLoaded, setModelsLoaded] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -201,12 +205,20 @@ const FaceRecognition: React.FC = () => {
       }
       console.log(`Detected ${detections.length} faces.`);
 
+      // --- Match Faces ---
+      const results = detections.map((d) => faceMatcher.findBestMatch(d.descriptor));
+      let recognizedName: string | null = null;
+      results.forEach((result, i) => {
+        if (result.label !== "unknown") {
+          recognizedName = result.label;
+        }
+      });
+      if (recognizedName && onVerified) {
+        onVerified(recognizedName);
+      }
+
       // --- Match and Draw ---
       const resizedDetections = faceapi.resizeResults(detections, displaySize);
-      const results = resizedDetections.map((d) =>
-        faceMatcher.findBestMatch(d.descriptor)
-      );
-
       const context = canvasRef.current.getContext("2d");
       if (!context) {
         throw new Error("Could not get canvas context");
