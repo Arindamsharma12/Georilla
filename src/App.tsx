@@ -77,8 +77,8 @@ const App: React.FC = () => {
       />
 
       {/* Optional: Handle cases where a signed-in user lands on /login */}
-      <Route path="/login" element={<Navigate to="/" replace />} />
-      <Route path="/sign-up" element={<Navigate to="/" replace />} />
+      {/* <Route path="/login" element={<Navigate to="/" replace />} />
+      <Route path="/sign-up" element={<Navigate to="/" replace />} /> */}
     </Routes>
   );
 };
