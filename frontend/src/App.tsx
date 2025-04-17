@@ -2,14 +2,8 @@ import React from "react";
 import FaceRecognition from "./components/FaceRecognition.tsx";
 import { Routes, Route, Navigate } from "react-router-dom";
 import GeolocationAttendanceSystem from "./components/UI.tsx";
-import {
-  SignedIn,
-  SignedOut,
-  SignIn,
-  SignUp,
-  useUser,
-} from "@clerk/clerk-react";
-import AdminDashboard from "./components/AdminDashboard";
+import { SignedOut, SignIn, SignUp, useUser } from "@clerk/clerk-react";
+import AdminDashboard from "../src/components/AdminDashboard.tsx";
 
 // Helper component to protect routes
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
@@ -76,10 +70,7 @@ const App: React.FC = () => {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/admin"
-        element={<AdminDashboard />}
-      />
+      <Route path="/admin" element={<AdminDashboard />} />
       {/* Optional: Handle cases where a signed-in user lands on /login */}
       {/* <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/sign-up" element={<Navigate to="/" replace />} /> */}

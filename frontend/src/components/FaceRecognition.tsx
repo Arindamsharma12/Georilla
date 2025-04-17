@@ -8,7 +8,10 @@ interface FaceRecognitionProps {
   useCamera?: boolean;
 }
 
-const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onVerified, useCamera }) => {
+const FaceRecognition: React.FC<FaceRecognitionProps> = ({
+  onVerified,
+  useCamera,
+}) => {
   const [isModelsLoaded, setModelsLoaded] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -234,9 +237,11 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onVerified, useCamera
       console.log(`Detected ${detections.length} faces.`);
 
       // --- Match Faces ---
-      const results = detections.map((d) => faceMatcher.findBestMatch(d.descriptor));
+      const results = detections.map((d) =>
+        faceMatcher.findBestMatch(d.descriptor)
+      );
       let recognizedName: string | null = null;
-      results.forEach((result, i) => {
+      results.forEach((result) => {
         if (result.label !== "unknown") {
           recognizedName = result.label;
         }
@@ -325,20 +330,22 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onVerified, useCamera
       toast.error("Camera not ready. Please wait a moment and try again.");
       return;
     }
-    const canvas = document.createElement('canvas');
+    const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (ctx) {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg');
+      const dataUrl = canvas.toDataURL("image/jpeg");
       setImageUrl(dataUrl);
       await processImageElement(canvas);
     }
   };
 
   // Helper to process an image/canvas element for face recognition
-  const processImageElement = async (imgElement: HTMLImageElement | HTMLCanvasElement) => {
+  const processImageElement = async (
+    imgElement: HTMLImageElement | HTMLCanvasElement
+  ) => {
     if (!isModelsLoaded) {
       toast.error("Models are not loaded yet. Please wait.");
       return;
@@ -347,7 +354,9 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onVerified, useCamera
     try {
       const labeledFaceDescriptors = await loadLabeledImages();
       if (labeledFaceDescriptors.every((ld) => ld.descriptors.length === 0)) {
-        toast.error("No known face descriptors loaded. Cannot perform recognition.");
+        toast.error(
+          "No known face descriptors loaded. Cannot perform recognition."
+        );
         setIsProcessing(false);
         return;
       }
@@ -361,7 +370,9 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onVerified, useCamera
         setIsProcessing(false);
         return;
       }
-      const results = detections.map((d) => faceMatcher.findBestMatch(d.descriptor));
+      const results = detections.map((d) =>
+        faceMatcher.findBestMatch(d.descriptor)
+      );
       let recognizedName: string | null = null;
       results.forEach((result) => {
         if (result.label !== "unknown") {
@@ -376,14 +387,24 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onVerified, useCamera
         if (canvasRef.current) {
           containerRef.current.removeChild(canvasRef.current);
         }
-        canvasRef.current = faceapi.createCanvasFromMedia(imgElement);
-        containerRef.current.appendChild(canvasRef.current);
+        if (
+          imgElement instanceof HTMLImageElement ||
+          imgElement instanceof HTMLVideoElement
+        ) {
+          canvasRef.current = faceapi.createCanvasFromMedia(imgElement);
+          containerRef.current.appendChild(canvasRef.current);
+        }
         const displaySize = {
           width: imgElement.width,
           height: imgElement.height,
         };
-        faceapi.matchDimensions(canvasRef.current, displaySize);
-        const resizedDetections = faceapi.resizeResults(detections, displaySize);
+        if (canvasRef.current) {
+          faceapi.matchDimensions(canvasRef.current, displaySize);
+        }
+        const resizedDetections = faceapi.resizeResults(
+          detections,
+          displaySize
+        );
         results.forEach((result, i) => {
           const box = resizedDetections[i].detection.box;
           const drawBox = new faceapi.draw.DrawBox(box, {
